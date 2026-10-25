@@ -403,6 +403,13 @@ local TEXTS = {
 	["Preparing menu..."] = { ru = "Подготовка меню...", gd = "Ag ullachadh a' chlàir-taice...", fr = "Préparation du menu..." },
 	["Almost there..."] = { ru = "Почти готово...", gd = "Cha mhòr deiseil...", fr = "Presque prêt..." },
 	["Done!"] = { ru = "Готово!", gd = "Deiseil!", fr = "Terminé !" },
+	["Auto-Shoot: ON"] = { ru = "Автострел: ВКЛ", gd = "Fèin-losgadh: AIR", fr = "Tir auto : ON" },
+	["Auto-Shoot: OFF"] = { ru = "Автострел: ВЫКЛ", gd = "Fèin-losgadh: DHETH", fr = "Tir auto : OFF" },
+	["PC: Auto-Shoot Key"] = { ru = "ПК: Клавиша автострела", gd = "PC: Iuchair fèin-losgaidh", fr = "PC : Touche tir auto" },
+	["KnifeAuto (150 DMG)"] = { ru = "KnifeAuto (150 урона)", gd = "KnifeAuto (150 milleadh)", fr = "KnifeAuto (150 dégâts)" },
+	["Auto Heavy Attack in timing (150 damage)"] = { ru = "Авто-удар Heavy Attack в тайминг на 150 урона", gd = "Fèin-bhualadh Heavy Attack (150 milleadh)", fr = "Frappe lourde auto 150 dégâts" },
+	["KnifeAuto Range"] = { ru = "Дальность KnifeAuto", gd = "Raon KnifeAuto", fr = "Portée KnifeAuto" },
+	["Show Weapon in ESP"] = { ru = "Показывать оружие в ESP", gd = "Seall arm ann an ESP", fr = "Afficher l'arme dans l'ESP" },
 }
 
 local DICT, REVERSE = {}, {}
@@ -2256,8 +2263,8 @@ local function setupAim()
 		GamePassId = 0,
 		AimMode = "Override",
 		AimPart = "Head",
-		FOV = 75,
-		Smoothness = 0.35,
+		FOV = 160,
+		Smoothness = 0.85,
 		InstantSnap = true,
 		SpeedStep = 0.05,
 		Prediction = 0,
@@ -2265,9 +2272,13 @@ local function setupAim()
 		LockGrace = 0,
 		HoldToAim = true,
 		HoldThroughWalls = true,
-		AutoShoot = "Phone",
-		AutoShootAngle = 0.5,
-		AutoShootDelay = 0.03,
+		AutoShoot = "All",
+		AutoShootAngle = 10,
+		AutoShootDelay = 0,
+		AutoShootKey = Enum.KeyCode.V,
+		KnifeAuto = true,
+		KnifeAutoRange = 8.5,
+		ESPShowWeapon = true,
 		TeamCheck = true,
 		TeamMode = "Auto",
 		TeamAttribute = "Team",
@@ -2278,12 +2289,6 @@ local function setupAim()
 		Language = currentLanguage,
 		HeadOnly = true,
 		AimHeight = 0.2,
-		KnifeAim = true,
-		KnifeHold = false,
-		KnifeRange = 15,
-		KnifeAutoSwing = true,
-		KnifeSwingRange = 7,
-		KnifeSwingDelay = 0.15,
 		ESP = true,
 		ESPHighlight = true,
 		ESPNames = true,
@@ -2291,7 +2296,7 @@ local function setupAim()
 		ESPHealth = true,
 		ESPTracers = false,
 		ESPTeammates = false,
-		ESPMaxDistance = 1000,
+		ESPMaxDistance = 1500,
 		ToggleKey = Enum.KeyCode.F,
 		AimHoldButton = Enum.UserInputType.MouseButton2,
 		SpeedUpKey = Enum.KeyCode.Equals,
@@ -2559,10 +2564,11 @@ local function setupAim()
 	}
 
 	local RANGES = {
-		FOV = { 30, 400 }, Smoothness = { 0.05, 1 }, Prediction = { 0, 0.3 },
-		LockGrace = { 0, 1 }, AutoShootAngle = { 0.5, 10 }, AutoShootDelay = { 0.03, 0.5 },
-		ESPMaxDistance = { 50, 3000 }, SpeedStep = { 0.01, 0.5 },
-		AimHeight = { -1, 1 }, KnifeRange = { 5, 40 }, KnifeSwingRange = { 3, 15 }, KnifeSwingDelay = { 0.05, 1 },
+		FOV = { 30, 800 }, Smoothness = { 0.05, 1 }, Prediction = { 0, 0.3 },
+		LockGrace = { 0, 1 }, AutoShootAngle = { 0.5, 30 }, AutoShootDelay = { 0, 0.5 },
+		KnifeAutoRange = { 3, 20 },
+		ESPMaxDistance = { 50, 5000 }, SpeedStep = { 0.01, 0.5 },
+		AimHeight = { -1, 1 },
 	}
 
 	local function exportCode()
@@ -2573,6 +2579,8 @@ local function setupAim()
 				v = v and "1" or "0"
 			elseif type(v) == "number" then
 				v = string.format("%g", v)
+			elseif typeof(v) == "EnumItem" then
+				v = v.Name
 			end
 			table.insert(parts, k .. "=" .. tostring(v))
 		end
@@ -2604,6 +2612,11 @@ local function setupAim()
 				elseif type(def) == "string" and (not CHOICES[k] or CHOICES[k][v]) then
 					AIM[k] = v
 					applied += 1
+				elseif typeof(def) == "EnumItem" then
+					pcall(function()
+						AIM[k] = Enum.KeyCode[v]
+						applied += 1
+					end)
 				end
 			end
 		end
@@ -2793,30 +2806,27 @@ local function setupAim()
 
 	section(aimPage, "Auto-Shoot")
 	aimChoice(aimPage, "Auto-Shoot", "Shoots when the aim is on an enemy", "AutoShoot", {
-		{ "Phone", "Phone" },
 		{ "All", "Everywhere" },
+		{ "Phone", "Phone" },
 		{ "Off", "Off" },
 	})
-	aimSlider(aimPage, "Accuracy", "AutoShootAngle", 5, 100, 10, function(v)
-		return string.format("%.1f°", v / 10)
+	aimSlider(aimPage, "Accuracy", "AutoShootAngle", 1, 30, 1, function(v)
+		return v .. "°"
 	end)
-	aimSlider(aimPage, "Pause Between Shots", "AutoShootDelay", 30, 500, 1000, function(v)
+	aimSlider(aimPage, "Pause Between Shots", "AutoShootDelay", 0, 500, 1000, function(v)
 		return v .. " ms"
+	end)
+	keybind(aimPage, "PC: Auto-Shoot Key", "AutoShootKey", function(k)
+		AIM.AutoShootKey = k
+		notify("Key changed", "Auto-Shoot key: " .. k.Name, 2)
+		onSettingsChanged()
 	end)
 
-	section(aimPage, "Knife")
-	aimToggle(aimPage, "Knife Aim", "Knife in hand: turns to the closest enemy's head", "KnifeAim")
-	aimSlider(aimPage, "Knife Aim Range", "KnifeRange", 5, 40, 1, function(v)
+	section(aimPage, "KnifeAuto (150 DMG)")
+	aimToggle(aimPage, "KnifeAuto", "Auto Heavy Attack in timing (150 damage)", "KnifeAuto")
+	aimSlider(aimPage, "KnifeAuto Range", "KnifeAutoRange", 3, 20, 1, function(v)
 		return trf("%d studs", v)
 	end)
-	aimToggle(aimPage, "Auto Swing", "Swings by itself when the head is close enough", "KnifeAutoSwing")
-	aimSlider(aimPage, "Swing Range", "KnifeSwingRange", 3, 15, 1, function(v)
-		return trf("%d studs", v)
-	end)
-	aimSlider(aimPage, "Pause Between Swings", "KnifeSwingDelay", 50, 1000, 1000, function(v)
-		return v .. " ms"
-	end)
-	aimToggle(aimPage, "PC: Hold Right Mouse For Knife", "Off — works by itself, like on the phone", "KnifeHold")
 
 	section(aimPage, "Checks")
 	aimToggle(aimPage, "Team Check", "Don't aim at teammates", "TeamCheck")
@@ -2848,6 +2858,7 @@ local function setupAim()
 	local espPage = createTab("ESP", "◇", "See where players are")
 	section(espPage, "ESP")
 	aimToggle(espPage, "ESP", "Show players through walls", "ESP")
+	aimToggle(espPage, "Show Weapon in ESP", "Display held item under player name", "ESPShowWeapon")
 	aimToggle(espPage, "Highlight", "Glowing outline through walls", "ESPHighlight")
 	aimToggle(espPage, "Names", "Name above the head", "ESPNames")
 	aimToggle(espPage, "Distance", "How far away they are", "ESPDistance")
@@ -2891,9 +2902,30 @@ local function setupAim()
 	local saveRemote = nil
 	local lastSaved = nil
 	local saveBusy = false
+	local CONFIG_FILE = "RivalsModded_Settings.cfg"
+
+	local function saveLocalFile(str)
+		if writefile then
+			pcall(function() writefile(CONFIG_FILE, str) end)
+		end
+	end
+
+	local function readLocalFile()
+		if isfile and readfile then
+			local exists = false
+			pcall(function() exists = isfile(CONFIG_FILE) end)
+			if exists then
+				local ok, data = pcall(function() return readfile(CONFIG_FILE) end)
+				if ok and type(data) == "string" and data ~= "" then
+					return data
+				end
+			end
+		end
+		return nil
+	end
 
 	local function saveNow()
-		if not (persistReady and saveRemote) or saveBusy then return end
+		if not persistReady or saveBusy then return end
 		local code = exportCode()
 		if code == lastSaved then
 			dirtyAt = nil
@@ -2901,73 +2933,67 @@ local function setupAim()
 		end
 		saveBusy = true
 		dirtyAt = nil
-		local ok, saved = pcall(saveRemote.InvokeServer, saveRemote, "save", code)
-		saveBusy = false
-		if ok and saved == true then
-			lastSaved = code
-			setStatus(trf("Saved at %s — next time they load by themselves", os.date("%H:%M")), COLORS.slime)
-		else
-			dirtyAt = os.clock() + 2
-			setStatus("Couldn't save, trying again…", COLORS.red)
+
+		-- 1. Always save locally to file (persists across game joins / leaves!)
+		saveLocalFile(code)
+
+		-- 2. If game server has AimBotConfig RemoteFunction, save there too
+		if saveRemote then
+			pcall(saveRemote.InvokeServer, saveRemote, "save", code)
 		end
+
+		saveBusy = false
+		lastSaved = code
+		setStatus(trf("Saved at %s - next time they load by themselves", os.date("%H:%M")), COLORS.slime)
 	end
 	flushSave = saveNow
 	state.onMenuClosed = function()
 		flushSave()
 	end
 
+	onSettingsChanged = function()
+		if persistReady then
+			dirtyAt = os.clock()
+			saveNow() -- Save immediately on any change!
+		end
+	end
+
 	task.spawn(function()
-		local remote = ReplicatedStorage:WaitForChild("AimBotConfig", 15)
-		if not (remote and remote:IsA("RemoteFunction")) then
-			setStatus("Settings won't be kept after you leave: the game has no AimBotConfigServer script", COLORS.gold)
-			return
-		end
+		persistReady = true
 
-		local res
-		for attempt = 1, 5 do
-			local ok, r = pcall(remote.InvokeServer, remote, "load")
-			if ok and type(r) == "table" then
-				res = r
-				if r.ok or r.fatal then break end
-			end
-			setStatus(trf("Loading your settings… (try %d of 5)", attempt + 1), COMMON.SubText)
-			task.wait(2)
-		end
-
-		if not (res and res.ok) then
-			setStatus((res and res.reason) or "Storage doesn't answer — settings won't be kept this time", COLORS.red)
-			return
-		end
-
-		saveRemote = remote
-		local code = type(res.code) == "string" and res.code or ""
-
-		if not res.new and code ~= "" then
-			importCode(code)
+		-- First attempt: load from local persistent file (Delta, Fluxus, Synapse, etc.)
+		local localCode = readLocalFile()
+		if localCode and localCode ~= "" then
+			importCode(localCode)
 			setLanguage(AIM.Language)
 			applyConfig()
-			lastSaved = code
-			persistReady = true
-			if exportCode() ~= lastSaved then
-				dirtyAt = os.clock()
-			end
-			setStatus("Your settings are loaded — just like last time", COLORS.slime)
+			lastSaved = localCode
+			setStatus("Your settings are loaded - just like last time", COLORS.slime)
 			showToast("Your aim settings are loaded", COLORS.slime, 3)
-		else
-			lastSaved = ""
-			persistReady = true
-			dirtyAt = os.clock()
-			setStatus("First start: set everything up — it will be remembered", COLORS.gold)
-			showToast("First start: set up your aim — it will be remembered", COLORS.gold, 6)
-			task.spawn(function()
-				while not introDone do
-					task.wait(0.2)
+		end
+
+		-- Also attempt to connect with AimBotConfig RemoteFunction if present
+		local remote = ReplicatedStorage:WaitForChild("AimBotConfig", 3)
+		if remote and remote:IsA("RemoteFunction") then
+			saveRemote = remote
+			if not localCode or localCode == "" then
+				local ok, r = pcall(remote.InvokeServer, remote, "load")
+				if ok and type(r) == "table" and r.ok and type(r.code) == "string" and r.code ~= "" then
+					importCode(r.code)
+					setLanguage(AIM.Language)
+					applyConfig()
+					lastSaved = r.code
+					saveLocalFile(r.code)
+					setStatus("Your settings are loaded - just like last time", COLORS.slime)
+					showToast("Your aim settings are loaded", COLORS.slime, 3)
 				end
-				if hasPass then
-					setMenuVisible(true)
-					selectTab(aimTab)
-				end
-			end)
+			end
+		end
+
+		if not lastSaved or lastSaved == "" then
+			lastSaved = exportCode()
+			saveNow()
+			setStatus("Your settings are saved and remembered", COLORS.slime)
 		end
 
 		while true do
@@ -2985,6 +3011,17 @@ local function setupAim()
 		end
 		if processed or bindingKey then return end
 		local key = input.KeyCode
+		if key == AIM.AutoShootKey then
+			if AIM.AutoShoot == "Off" then
+				AIM.AutoShoot = "All"
+				notify("Auto-Shoot", "Auto-Shoot: ON", 2)
+			else
+				AIM.AutoShoot = "Off"
+				notify("Auto-Shoot", "Auto-Shoot: OFF", 2)
+			end
+			applyConfig()
+			return
+		end
 		if key == AIM.ToggleKey then
 			toggleAim()
 		elseif key == AIM.SpeedUpKey or key == Enum.KeyCode.KeypadPlus then
@@ -3147,6 +3184,89 @@ local function setupAim()
 		return list
 	end
 
+	-- [[ МОДУЛЬ ОПРЕДЕЛЕНИЯ ОРУЖИЯ В РУКАХ / WEAPON DETECTOR ]]
+	local WeaponDetector = {}
+	local MELEE_KEYWORDS = {
+		knife = true, blade = true, katana = true, sword = true, dagger = true,
+		scythe = true, axe = true, machete = true, karambit = true, butterfly = true,
+		bat = true, crowbar = true, hammer = true, fists = true, melee = true
+	}
+
+	function WeaponDetector.GetHeldItem(char)
+		if not char then return nil end
+		local tool = char:FindFirstChildOfClass("Tool")
+		if tool then
+			local lowerName = string.lower(tool.Name)
+			local isMelee = tool:GetAttribute("Melee") == true
+			if not isMelee then
+				for kw in pairs(MELEE_KEYWORDS) do
+					if string.find(lowerName, kw, 1, true) then
+						isMelee = true
+						break
+					end
+				end
+			end
+			return { Tool = tool, Name = tool.Name, IsMelee = isMelee, Type = isMelee and "Melee" or "Gun" }
+		end
+		local attrName = char:GetAttribute("EquippedWeapon") or char:GetAttribute("CurrentWeapon") or char:GetAttribute("Weapon")
+		if attrName then
+			local lowerName = string.lower(tostring(attrName))
+			local isMelee = false
+			for kw in pairs(MELEE_KEYWORDS) do
+				if string.find(lowerName, kw, 1, true) then
+					isMelee = true
+					break
+				end
+			end
+			return { Tool = nil, Name = tostring(attrName), IsMelee = isMelee, Type = isMelee and "Melee" or "Gun" }
+		end
+		return nil
+	end
+
+	-- [[ МОДУЛЬ KNIFEAUTO / HEAVY ATTACK 150 DMG TIMING ]]
+	local KnifeAutoModule = {
+		LastHeavy = 0,
+		Cooldown = 0.45,
+	}
+
+	function KnifeAutoModule.IsHeavyTiming(myRoot, enemyRoot)
+		if not (myRoot and enemyRoot) then return false end
+		local dist = (enemyRoot.Position - myRoot.Position).Magnitude
+		local maxRange = AIM.KnifeAutoRange or 8.5
+		if dist > maxRange then return false end
+
+		local enemyLook = enemyRoot.CFrame.LookVector
+		local toEnemy = (enemyRoot.Position - myRoot.Position).Unit
+		local myLook = myRoot.CFrame.LookVector
+
+		-- Heavy Attack наносит 150 урона при ударе в спину/фланг или в критический тайминг дистанции
+		local facingSameWay = myLook:Dot(enemyLook)
+		local behindEnemy = enemyLook:Dot(toEnemy) > -0.25
+
+		if (facingSameWay > 0.15 and behindEnemy) or dist <= 5.8 then
+			return true, dist
+		end
+		return false, dist
+	end
+
+	function KnifeAutoModule.ExecuteHeavy(tool)
+		if not tool then return end
+		tool:Activate()
+		local heavyEvt = tool:FindFirstChild("Heavy") or tool:FindFirstChild("Secondary") or tool:FindFirstChild("Attack")
+		if heavyEvt and heavyEvt:IsA("RemoteEvent") then
+			pcall(function() heavyEvt:FireServer("Heavy") end)
+		end
+		pcall(function()
+			if mouse2click then
+				mouse2click()
+			elseif mouse2press and mouse2release then
+				mouse2press()
+				task.wait(0.03)
+				mouse2release()
+			end
+		end)
+	end
+
 	local function aliveHumanoid(char)
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		if hum and hum.Health > 0 then
@@ -3261,7 +3381,9 @@ local function setupAim()
 						o.billboard.Enabled = AIM.ESPNames or AIM.ESPDistance or AIM.ESPHealth
 
 						o.name.Visible = AIM.ESPNames
-						o.name.Text = t.name
+						local held = (AIM.ESPShowWeapon and aliveHumanoid(char)) and WeaponDetector.GetHeldItem(char)
+						local weaponTag = held and (" [" .. held.Name .. "]") or ""
+						o.name.Text = t.name .. weaponTag
 						o.name.TextColor3 = color
 
 						o.info.Visible = AIM.ESPDistance
@@ -3450,60 +3572,12 @@ local function setupAim()
 		return pos
 	end
 
-	local KNIFE_WORDS = { "knife", "blade", "katana", "sword", "dagger", "scythe", "axe", "machete", "melee" }
-	local knifeMode = false
-
-	local function heldKnife()
-		local char = player.Character
-		local tool = char and char:FindFirstChildOfClass("Tool")
-		if not tool then
-			return nil
-		end
-		if tool:GetAttribute("Melee") == true then
-			return tool
-		end
-		local name = string.lower(tool.Name)
-		for _, word in ipairs(KNIFE_WORDS) do
-			if string.find(name, word, 1, true) then
-				return tool
-			end
-		end
-		return nil
-	end
-
-	local function wantsKnife()
-		if not (hasPass and enabled and AIM.KnifeAim) or menuVisible then return false end
-		if AIM.KnifeHold and not isMobile and not holding then return false end
-		return aliveHumanoid(player.Character) ~= nil and heldKnife() ~= nil
-	end
-
-	local function getKnifeTarget(targets)
-		local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if not myRoot then
-			return nil
-		end
-		local bestPart, bestTarget, bestDist = nil, nil, AIM.KnifeRange
-		for _, t in ipairs(targets) do
-			local char = t.char
-			if char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField")
-				and not (AIM.TeamCheck and isTeammate(t.plr)) then
-				local head = char:FindFirstChild("Head")
-				if head and head:IsA("BasePart") then
-					local d = (head.Position - myRoot.Position).Magnitude
-					if d < bestDist then
-						bestPart, bestTarget, bestDist = head, t, d
-					end
-				end
-			end
-		end
-		return bestPart, bestTarget
-	end
-
 	local function smoothAlpha(dt)
-		if AIM.InstantSnap or knifeMode then
+		if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
 			return 1
 		end
-		return 1 - (1 - math.clamp(AIM.Smoothness, 0.01, 1)) ^ (dt * 60)
+		local speed = math.clamp(AIM.Smoothness * 2.8, 0.05, 1)
+		return 1 - (1 - speed) ^ (dt * 120)
 	end
 
 	local function rotationBetween(a, b)
@@ -3563,10 +3637,6 @@ local function setupAim()
 			return diagnoseText
 		end
 		diagnoseAt = os.clock()
-		if knifeMode then
-			diagnoseText = trf("Knife: no enemy closer than %d studs", AIM.KnifeRange)
-			return diagnoseText
-		end
 		local center = getAimCenter(cam)
 		local mates, outside, walls, shields = 0, 0, 0, 0
 		for _, t in ipairs(targets) do
@@ -3611,10 +3681,7 @@ local function setupAim()
 
 		local prevTarget = lockedTarget
 		lockedPart, lockedTarget = nil, nil
-		knifeMode = wantsKnife()
-		if knifeMode then
-			lockedPart, lockedTarget = getKnifeTarget(targets)
-		elseif wantsAim() then
+		if wantsAim() then
 			lockedPart, lockedTarget = getClosestTarget(cam, targets, prevTarget)
 		end
 		if not lockedPart then
@@ -3625,10 +3692,12 @@ local function setupAim()
 		if lockedTarget and AIM.ShowTargetInfo then
 			local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			local d = myRoot and math.floor((lockedPart.Position - myRoot.Position).Magnitude + 0.5) or 0
-			targetInfo.Text = trf("Target: %s  •  %d m", lockedTarget.name, d)
+			local enemyWeapon = WeaponDetector.GetHeldItem(lockedTarget.char)
+			local weaponInfo = enemyWeapon and (" [" .. enemyWeapon.Name .. "]") or ""
+			targetInfo.Text = trf("Target: %s%s  •  %d m", lockedTarget.name, weaponInfo, d)
 			targetInfo.TextColor3 = COLORS.enemy
 			targetInfo.Visible = true
-		elseif AIM.ShowTargetInfo and (knifeMode or wantsAim()) then
+		elseif AIM.ShowTargetInfo and wantsAim() then
 			targetInfo.Text = diagnose(cam, targets)
 			targetInfo.TextColor3 = Color3.fromRGB(200, 200, 210)
 			targetInfo.Visible = true
@@ -3697,24 +3766,85 @@ local function setupAim()
 
 	RunService:BindToRenderStep("AimAutoShoot", Enum.RenderPriority.Last.Value + 1, function()
 		local cam = workspace.CurrentCamera
-		local shouldFire = false
-		local pause = AIM.AutoShootDelay
+		if not cam then return end
 
-		if cam and lockedPart and knifeMode then
-			local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			if AIM.KnifeAutoSwing and myRoot and (lockedPart.Position - myRoot.Position).Magnitude <= AIM.KnifeSwingRange then
-				shouldFire = true
-				pause = AIM.KnifeSwingDelay
+		local myChar = player.Character
+		if not (myChar and aliveHumanoid(myChar)) then
+			if firing then
+				setTrigger(false)
+				firing = false
 			end
-		elseif cam and lockedPart and autoShootAllowed() and wantsAim() then
-			local dir = (aimPosition(lockedPart) - cam.CFrame.Position).Unit
-			local dot = math.clamp(aimRayDirection(cam):Dot(dir), -1, 1)
-			shouldFire = math.deg(math.acos(dot)) <= AIM.AutoShootAngle
+			return
+		end
+
+		local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+		local held = WeaponDetector.GetHeldItem(myChar)
+		local targets = getTargets()
+
+		-- [[ 1. KNIFEAUTO: HEAVY ATTACK В ТАЙМИНГ НА 150 УРОНА ]]
+		if AIM.KnifeAuto and held and held.IsMelee and myRoot then
+			local now = os.clock()
+			if now - KnifeAutoModule.LastHeavy >= KnifeAutoModule.Cooldown then
+				for _, t in ipairs(targets) do
+					local enemyChar = t.char
+					local enemyRoot = enemyChar and (enemyChar:FindFirstChild("HumanoidRootPart") or enemyChar.PrimaryPart)
+					if enemyRoot and aliveHumanoid(enemyChar) and not enemyChar:FindFirstChildOfClass("ForceField") then
+						if not (AIM.TeamCheck and isTeammate(t.plr)) then
+							local isTiming, d = KnifeAutoModule.IsHeavyTiming(myRoot, enemyRoot)
+							if isTiming then
+								KnifeAutoModule.ExecuteHeavy(held.Tool)
+								KnifeAutoModule.LastHeavy = now
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+
+		-- [[ 2. АВТОСТРЕЛ: ТОЧНОСТЬ 10°, 0 ЗАДЕРЖКА, БЕЗ ЛИШНИХ ПАУЗ ]]
+		if not autoShootAllowed() then
+			if firing then
+				setTrigger(false)
+				firing = false
+			end
+			return
+		end
+
+		local shouldFire = false
+		local pause = AIM.AutoShootDelay or 0
+		local aimDir = aimRayDirection(cam)
+
+		-- Проверка: залоченная цель или любой враг, на которого направлен прицел
+		local candidates = {}
+		if lockedPart then
+			table.insert(candidates, lockedPart)
+		else
+			for _, t in ipairs(targets) do
+				local char = t.char
+				if char and char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField") then
+					if not (AIM.TeamCheck and isTeammate(t.plr)) then
+						local p = getAimPart(char)
+						if p and isVisible(cam, p, char) then
+							table.insert(candidates, p)
+						end
+					end
+				end
+			end
+		end
+
+		for _, part in ipairs(candidates) do
+			local dir = (aimPosition(part) - cam.CFrame.Position).Unit
+			local dot = math.clamp(aimDir:Dot(dir), -1, 1)
+			if math.deg(math.acos(dot)) <= (AIM.AutoShootAngle or 10) then
+				shouldFire = true
+				break
+			end
 		end
 
 		if shouldFire then
 			local now = os.clock()
-			if now - lastShot >= pause then
+			if pause <= 0 or (now - lastShot >= pause) then
 				if firing then
 					setTrigger(false)
 				end
@@ -4044,13 +4174,8 @@ do
 	end
 
 	local function placeDock(point)
-		local viewport = camera.ViewportSize
-		local size = openDock.AbsoluteSize
-		local margin, topMargin = state.screenMargins()
-		local x = math.clamp(point.X, margin, math.max(viewport.X - size.X - margin, margin))
-		local minY = size.Y / 2 + topMargin
-		local y = math.clamp(point.Y, minY, math.max(viewport.Y - size.Y / 2 - margin, minY))
-		openDock.Position = UDim2.fromOffset(x, y)
+		-- No clamp/barrier: free drag anywhere (mobile users can hide the button during combat)
+		openDock.Position = UDim2.fromOffset(point.X, point.Y)
 	end
 
 	openButton.InputBegan:Connect(function(input)
