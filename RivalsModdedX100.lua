@@ -24,7 +24,6 @@ local CONFIG = {
 	Height = 520,
 	Transparency = 0.16,
 	ScreenMargin = 16,
-	ShowIntro = true,
 	Blur = true,
 	BlurSize = 10,
 	AnimatedBorder = true,
@@ -1495,7 +1494,7 @@ end)
 local menuVisible = false
 local minimized = false
 local maximized = false
-local introDone = false
+local introDone = true
 
 local function updateBlur()
 	local target = (CONFIG.Blur and menuVisible and not minimized) and CONFIG.BlurSize or 0
@@ -4198,187 +4197,7 @@ task.spawn(function()
 	end
 end)
 
-local function playIntro(onFinished)
-	local overlay = create("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(10, 7, 6),
-		BackgroundTransparency = 1,
-		ZIndex = 40,
-		Parent = gui,
-	})
-	local stage = create("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(440, 290),
-		BackgroundTransparency = 1,
-		ZIndex = 41,
-		Parent = gui,
-	})
-	local viewport = camera.ViewportSize
-	create("UIScale", {
-		Scale = math.clamp(math.min((viewport.X - 40) / 440, (viewport.Y - 40) / 290), 0.5, 1),
-		Parent = stage,
-	})
-
-	local logoHolder = create("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 4),
-		Size = UDim2.fromOffset(104, 104),
-		BackgroundColor3 = THEME.Window,
-		BackgroundTransparency = 0.05,
-		Parent = stage,
-	})
-	round(logoHolder)
-	local logoScale = create("UIScale", { Scale = 0, Parent = logoHolder })
-	local ringGradient = staticAccent(stroke(logoHolder, 0, 3), 0)
-	table.insert(spinningGradients, ringGradient)
-	for _, layer in ipairs({ { 9, 0.82 }, { 18, 0.93 } }) do
-		local glow = create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Parent = logoHolder })
-		round(glow)
-		staticAccent(stroke(glow, layer[2], layer[1]), 0)
-	end
-	local pumpkin = label({
-		Size = UDim2.fromScale(1, 1),
-		Text = CONFIG.Logo,
-		Font = FONT_BOLD,
-		TextSize = 50,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Parent = logoHolder,
-	})
-
-	local title = label({
-		Position = UDim2.fromOffset(0, 124),
-		Size = UDim2.new(1, 0, 0, 40),
-		Text = CONFIG.Title,
-		Font = FONT_BOLD,
-		TextScaled = true,
-		TextColor3 = COMMON.White,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTransparency = 1,
-		Parent = stage,
-	})
-	create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 14, Parent = title })
-	local titleGradient = create("UIGradient", { Offset = Vector2.new(-1, 0), Color = shimmerSequence(), Parent = title })
-	table.insert(shimmerGradients, titleGradient)
-
-	local welcome = label({
-		Position = UDim2.fromOffset(0, 168),
-		Size = UDim2.new(1, 0, 0, 24),
-		Text = trf("Welcome, %s!", player.Name),
-		TextSize = 18,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		MaxVisibleGraphemes = 0,
-		Parent = stage,
-	})
-
-	local barBack = create("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 216),
-		Size = UDim2.fromOffset(280, 6),
-		BackgroundColor3 = THEME.Field,
-		BackgroundTransparency = 1,
-		Parent = stage,
-	})
-	round(barBack)
-	local barFill = create("Frame", {
-		Size = UDim2.fromScale(0, 1),
-		BackgroundColor3 = COMMON.White,
-		BackgroundTransparency = 1,
-		Parent = barBack,
-	})
-	round(barFill)
-	staticAccent(barFill, 0)
-	local status = label({
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 232),
-		Size = UDim2.fromOffset(280, 18),
-		Text = "",
-		TextSize = 13,
-		TextColor3 = COMMON.SubText,
-		TextTransparency = 1,
-		Parent = stage,
-	})
-	local percent = label({
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 232),
-		Size = UDim2.fromOffset(280, 18),
-		Text = "0%",
-		Font = FONT_BOLD,
-		TextSize = 13,
-		TextColor3 = THEME.Accent,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTransparency = 1,
-		Parent = stage,
-	})
-
-	task.spawn(function()
-		tween(overlay, 0.5, { BackgroundTransparency = 0.35 })
-		tween(blur, 0.6, { Size = 20 })
-		tween(logoScale, 0.8, { Scale = 1 }, Enum.EasingStyle.Back)
-		task.wait(0.4)
-		tween(title, 0.5, { TextTransparency = 0 })
-		task.wait(0.3)
-
-		local letters = utf8.len(welcome.Text) or 30
-		for count = 1, letters do
-			welcome.MaxVisibleGraphemes = count
-			task.wait(0.028)
-		end
-		welcome.MaxVisibleGraphemes = -1
-
-		tween(barBack, 0.3, { BackgroundTransparency = 0.2 })
-		tween(barFill, 0.3, { BackgroundTransparency = 0 })
-		tween(status, 0.3, { TextTransparency = 0 })
-		tween(percent, 0.3, { TextTransparency = 0 })
-
-		local shown = 0
-		local steps = {
-			{ 0.32, "Loading theme..." },
-			{ 0.64, "Preparing menu..." },
-			{ 0.9, "Almost there..." },
-			{ 1, "Done!" },
-		}
-		for _, step in ipairs(steps) do
-			status.Text = step[2]
-			tween(barFill, 0.42, { Size = UDim2.fromScale(step[1], 1) }, Enum.EasingStyle.Quad)
-			local from, elapsed = shown, 0
-			while elapsed < 0.42 do
-				elapsed = elapsed + task.wait()
-				local alpha = math.min(elapsed / 0.42, 1)
-				percent.Text = math.floor((from + (step[1] - from) * alpha) * 100 + 0.5) .. "%"
-			end
-			shown = step[1]
-		end
-		task.wait(0.35)
-
-		for _, text in ipairs({ pumpkin, title, welcome, status, percent }) do
-			tween(text, 0.35, { TextTransparency = 1 })
-		end
-		tween(barBack, 0.35, { BackgroundTransparency = 1 })
-		tween(barFill, 0.35, { BackgroundTransparency = 1 })
-		tween(logoScale, 0.45, { Scale = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-		tween(overlay, 0.6, { BackgroundTransparency = 1 })
-		task.wait(0.45)
-
-		removeFrom(spinningGradients, ringGradient)
-		removeFrom(shimmerGradients, titleGradient)
-		onFinished()
-		task.wait(0.3)
-		overlay:Destroy()
-		stage:Destroy()
-	end)
-end
-
-local function startMenu()
-	introDone = true
-	setMenuVisible(true)
-	task.delay(0.5, function()
-		notify(trf("Welcome, %s!", player.Name), trf("Press %s to hide the menu", CONFIG.ToggleKey.Name), 5)
-	end)
-end
-
-if CONFIG.ShowIntro then
-	playIntro(startMenu)
-else
-	startMenu()
-end
+-- [[ ИНИЦИАЛИЗАЦИЯ / INITIALIZATION ]]
+-- Загрузка завершена без интро, меню закрыто и открывается только по бинду (ПК) или кнопке (телефон)
+introDone = true
+setMenuVisible(false)
