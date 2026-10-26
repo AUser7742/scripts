@@ -3858,7 +3858,17 @@ local function setupAim()
 		end
 	end)
 end
-setupAim()
+local aimOk, aimErr = pcall(setupAim)
+if not aimOk then
+	warn("[RIVALS MODDED] setupAim ERROR: " .. tostring(aimErr))
+	if game:GetService("StarterGui") then
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = "AIM ERROR",
+			Text = tostring(aimErr),
+			Duration = 15
+		})
+	end
+end
 
 local themesPage = createTab("Themes", "◆", "Change the look of the menu")
 section(themesPage, "Choose a theme")
