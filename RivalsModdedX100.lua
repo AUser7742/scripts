@@ -2045,63 +2045,6 @@ local function keybind(page, title, configKey, onChanged)
 	end)
 end
 
--- AIM-specific keybind (reads/writes AIM table instead of CONFIG)
-local function aimKeybind(page, title, aimKey, onChanged)
-	local frame = card(page, 58)
-	label({
-		Position = UDim2.fromOffset(18, 0),
-		Size = UDim2.new(1, -170, 1, 0),
-		Text = title,
-		Font = FONT_BOLD,
-		TextSize = 15,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Parent = frame,
-	})
-	local function keyName()
-		local v = AIM[aimKey]
-		return (typeof(v) == "EnumItem") and v.Name or tostring(v)
-	end
-	local button = create("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -14, 0.5, 0),
-		Size = UDim2.fromOffset(0, 32),
-		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = THEME.Field,
-		AutoButtonColor = false,
-		Text = keyName(),
-		Font = FONT_BOLD,
-		TextSize = 14,
-		TextColor3 = COMMON.Text,
-		Parent = frame,
-	})
-	paint(button, "BackgroundColor3", "Field")
-	corner(button, 9)
-	padding(button, 0, 14, 0, 14)
-	local buttonStroke = stroke(button, 0.85, 1)
-	local waiting = false
-	button.MouseButton1Click:Connect(function()
-		if waiting then return end
-		waiting = true
-		bindingKey = true
-		button.Text = "Press a key..."
-		tween(buttonStroke, 0.2, { Color = THEME.Accent, Transparency = 0 })
-		local connection
-		connection = UserInputService.InputBegan:Connect(function(input)
-			if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-			connection:Disconnect()
-			waiting = false
-			local key = input.KeyCode
-			if key ~= Enum.KeyCode.Escape and key ~= Enum.KeyCode.Unknown then
-				AIM[aimKey] = key
-				if onChanged then onChanged(key) end
-			end
-			button.Text = keyName()
-			tween(buttonStroke, 0.2, { Color = COMMON.White, Transparency = 0.85 })
-			task.delay(0.2, function() bindingKey = false end)
-		end)
-	end)
-end
-
 local function statGrid(page, items)
 	local grid = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
@@ -2812,6 +2755,66 @@ local function setupAim()
 		})
 		button.MouseButton1Click:Connect(callback)
 		return button
+	end
+
+	local function aimKeybind(page, title, aimKey, onChanged)
+		local frame = card(page, 58)
+		label({
+			Position = UDim2.fromOffset(18, 0),
+			Size = UDim2.new(1, -170, 1, 0),
+			Text = title,
+			Font = FONT_BOLD,
+			TextSize = 15,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = frame,
+		})
+		local function keyName()
+			local v = AIM[aimKey]
+			return (typeof(v) == "EnumItem") and v.Name or tostring(v)
+		end
+		local button = create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -14, 0.5, 0),
+			Size = UDim2.fromOffset(0, 32),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = THEME.Field,
+			AutoButtonColor = false,
+			Text = keyName(),
+			Font = FONT_BOLD,
+			TextSize = 14,
+			TextColor3 = COMMON.Text,
+			Parent = frame,
+		})
+		paint(button, "BackgroundColor3", "Field")
+		corner(button, 9)
+		padding(button, 0, 14, 0, 14)
+		local buttonStroke = stroke(button, 0.85, 1)
+		local waiting = false
+		button.MouseButton1Click:Connect(function()
+			if waiting then return end
+			waiting = true
+			bindingKey = true
+			button.Text = "Press a key..."
+			tween(buttonStroke, 0.2, { Color = THEME.Accent, Transparency = 0 })
+			local connection
+			connection = UserInputService.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+				connection:Disconnect()
+				waiting = false
+				local key = input.KeyCode
+				if key ~= Enum.KeyCode.Escape and key ~= Enum.KeyCode.Unknown then
+					AIM[aimKey] = key
+					if onChanged then onChanged(key) end
+					applyConfig()
+				end
+				button.Text = keyName()
+				tween(buttonStroke, 0.2, { Color = COMMON.White, Transparency = 0.85 })
+				task.delay(0.2, function() bindingKey = false end)
+			end)
+		end)
+		table.insert(refreshers, function()
+			button.Text = keyName()
+		end)
 	end
 
 	local aimPage, aimTab = createTab("Aim", "◎", "Aim assist and auto-shoot")
