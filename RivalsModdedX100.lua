@@ -2370,12 +2370,12 @@ local function setupAim()
 	local targetInfo = Instance.new("TextLabel")
 	targetInfo.Name = "TargetInfo"
 	targetInfo.AnchorPoint = Vector2.new(0.5, 0)
-	targetInfo.Position = UDim2.new(0.5, 0, 0, 70)
-	targetInfo.Size = UDim2.fromOffset(260, 28)
-	targetInfo.BackgroundColor3 = COLORS.bg
-	targetInfo.BackgroundTransparency = 0.15
+	targetInfo.Position = UDim2.new(0.5, 0, 0, 14) -- Compact, clean at very top
+	targetInfo.Size = UDim2.fromOffset(0, 24) -- Sleek pill badge
+	targetInfo.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
+	targetInfo.BackgroundTransparency = 0.25
 	targetInfo.Font = Enum.Font.GothamBold
-	targetInfo.TextSize = 15
+	targetInfo.TextSize = 13
 	targetInfo.TextColor3 = COLORS.enemy
 	targetInfo.Visible = false
 	targetInfo.AutomaticSize = Enum.AutomaticSize.X
@@ -2384,23 +2384,24 @@ local function setupAim()
 	targetPad.PaddingLeft = UDim.new(0, 12)
 	targetPad.PaddingRight = UDim.new(0, 12)
 	targetPad.Parent = targetInfo
-	corner(targetInfo, 8)
-	outline(targetInfo, COLORS.accent, 1.5, 0.35)
+	corner(targetInfo, 12) -- Pill rounded shape
+	outline(targetInfo, COLORS.accent, 1, 0.4)
 
 	local function makeSideButton(name, posY)
 		local b = Instance.new("TextButton")
 		b.Name = name
 		b.AnchorPoint = Vector2.new(1, 0.5)
-		b.Position = UDim2.new(1, -20, 0.35, posY)
-		b.Size = UDim2.fromOffset(110, 45)
+		b.Position = UDim2.new(1, -16, 0.35, posY)
+		b.Size = UDim2.fromOffset(104, 40)
 		b.Font = Enum.Font.GothamBold
-		b.TextSize = 15
+		b.TextSize = 14
 		b.TextColor3 = Color3.new(1, 1, 1)
 		b.BackgroundColor3 = COLORS.bg2
+		b.BackgroundTransparency = 0.2
 		b.AutoButtonColor = true
 		b.Parent = hud
-		corner(b, 10)
-		outline(b, COLORS.accent, 1.5, 0.45)
+		corner(b, 12)
+		outline(b, COLORS.accent, 1, 0.4)
 		return b
 	end
 
@@ -3753,14 +3754,11 @@ local function setupAim()
 			local d = myRoot and math.floor((lockedPart.Position - myRoot.Position).Magnitude + 0.5) or 0
 			local enemyWeapon = WeaponDetector.GetHeldItem(lockedTarget.char)
 			local weaponInfo = enemyWeapon and (" [" .. enemyWeapon.Name .. "]") or ""
-			targetInfo.Text = trf("Target: %s%s  •  %d m", lockedTarget.name, weaponInfo, d)
+			targetInfo.Text = trf("🎯 %s%s  •  %d m", lockedTarget.name, weaponInfo, d)
 			targetInfo.TextColor3 = COLORS.enemy
 			targetInfo.Visible = true
-		elseif AIM.ShowTargetInfo and wantsAim() then
-			targetInfo.Text = diagnose(cam, targets)
-			targetInfo.TextColor3 = Color3.fromRGB(200, 200, 210)
-			targetInfo.Visible = true
 		else
+			-- Compact & clean: Hide banner completely when no locked target!
 			targetInfo.Visible = false
 		end
 
@@ -4335,6 +4333,9 @@ camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitToScreen)
 
 local clock = 0
 RunService.RenderStepped:Connect(function(dt)
+	-- OPTIMIZATION: Do not process UI animations when menu is closed!
+	if not menuVisible then return end
+
 	clock = clock + dt
 	if CONFIG.AnimatedBorder then
 		for _, gradient in ipairs(spinningGradients) do
@@ -4355,10 +4356,14 @@ end)
 
 task.spawn(function()
 	while gui.Parent do
-		onlinePulse.Size = UDim2.fromScale(1, 1)
-		onlinePulse.BackgroundTransparency = 0.35
-		tween(onlinePulse, 1.2, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
-		task.wait(1.8)
+		if menuVisible then
+			onlinePulse.Size = UDim2.fromScale(1, 1)
+			onlinePulse.BackgroundTransparency = 0.35
+			tween(onlinePulse, 1.2, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
+			task.wait(1.8)
+		else
+			task.wait(0.5)
+		end
 	end
 end)
 
