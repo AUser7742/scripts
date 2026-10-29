@@ -2299,7 +2299,7 @@ local function setupAim()
 		StickyTarget = true,
 		LockGrace = 0,
 		HoldToAim = true,
-		HoldThroughWalls = true,
+		HoldThroughWalls = false,
 		AutoShoot = "All",
 		AutoShootAngle = 10,
 		AutoShootDelay = 0,
@@ -3622,24 +3622,15 @@ local function setupAim()
 	local function getClosestTarget(cam, targets, current)
 		local center = getAimCenter(cam)
 
-		-- [[ ЖЕЛЕЗНЫЙ ЗАХВАТ: ДЕРЖИМ ЦЕЛЬ ДО КОНЦА, НЕ СКАЧЕМ МЕЖДУ ВРАГАМИ ]]
+		-- [[ ЖЕЛЕЗНЫЙ ЗАХВАТ: ДЕРЖИМ ЦЕЛЬ ДО КОНЦА (ТОЛЬКО ВИДИМУЮ, В СТЕНЫ НЕ ЦЕЛИМСЯ) ]]
 		if current and (holding or isMobile) then
 			local char = current.char
 			if char and char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField") then
 				if not (AIM.TeamCheck and isTeammate(current.plr)) then
 					local part = getAimPart(char)
-					if part then
-						local visible = isVisible(cam, part, char)
-						if visible or not AIM.WallCheck or (holding and AIM.HoldThroughWalls) then
-							lockSeenAt = os.clock()
-							return part, current
-						end
-
-						-- Грейс-период (защита от скачков на 2-го врага, если цель на миг скрылась за укрытием)
-						local grace = math.max(AIM.LockGrace or 0.4, 0.4)
-						if os.clock() - lockSeenAt < grace then
-							return part, current
-						end
+					if part and isVisible(cam, part, char) then
+						lockSeenAt = os.clock()
+						return part, current
 					end
 				end
 			end
