@@ -3622,9 +3622,7 @@ local function setupAim()
 	local function getClosestTarget(cam, targets, current)
 		local center = getAimCenter(cam)
 
-		-- [[ УДЕРЖАНИЕ ЦЕЛИ / TARGET HOLD ]]
-		-- Если цель уже была захвачена в FOV и мы продолжаем держать ПКМ (или на мобиле):
-		-- Аимбот продолжает держать эту цель ДАЖЕ ЕСЛИ ОНА ВЫШЛА ИЗ КРУГА FOV!
+		-- [[ ЖЕЛЕЗНЫЙ ЗАХВАТ: ДЕРЖИМ ЦЕЛЬ ДО КОНЦА, НЕ СКАЧЕМ МЕЖДУ ВРАГАМИ ]]
 		if current and (holding or isMobile) then
 			local char = current.char
 			if char and char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField") then
@@ -3636,13 +3634,18 @@ local function setupAim()
 							lockSeenAt = os.clock()
 							return part, current
 						end
+
+						-- Грейс-период (защита от скачков на 2-го врага, если цель на миг скрылась за укрытием)
+						local grace = math.max(AIM.LockGrace or 0.4, 0.4)
+						if os.clock() - lockSeenAt < grace then
+							return part, current
+						end
 					end
 				end
 			end
 		end
 
-		-- [[ ПЕРВИЧНЫЙ ЗАХВАТ: ТОЛЬКО В ЗОНЕ КРУГА FOV ]]
-		-- Если в начале в FOV никого нет, аимбот никого вне круга не захватывает!
+		-- [[ ПЕРВИЧНЫЙ ЗАХВАТ: ТОЛЬКО ЕСЛИ НЕТ ТЕКУЩЕЙ ЦЕЛИ И ВРАГ В ЗОНЕ FOV ]]
 		local bestPart, bestTarget, bestDist = nil, nil, AIM.FOV
 		for _, t in ipairs(targets) do
 			local part, dist = checkTarget(cam, t, center, bestDist)
