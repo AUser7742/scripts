@@ -4,6 +4,34 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 
+-- [[ ПРОВЕРКА ИГРЫ: ТОЛЬКО ДЛЯ RIVALS / GAME VALIDATION ]]
+local function isRivalsGame()
+	-- Universe ID: 6035872082 (все карты, арены 1v1, лобби)
+	-- Place ID: 17625359962 (основное лобби)
+	if game.GameId == 6035872082 or game.PlaceId == 17625359962 then
+		return true
+	end
+	local ok, info = pcall(function()
+		return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+	end)
+	if ok and info and type(info.Name) == "string" and string.find(string.upper(info.Name), "RIVALS", 1, true) then
+		return true
+	end
+	return false
+end
+
+if not isRivalsGame() then
+	warn("[RIVALS MODDED] Скрипт предназначен только для игры RIVALS!")
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = "RIVALS MENU",
+			Text = "Этот скрипт работает только в RIVALS!",
+			Duration = 6
+		})
+	end)
+	return
+end
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -2966,8 +2994,10 @@ local function setupAim()
 
 	local function saveLocalFile(str)
 		if writefile then
-			pcall(function() writefile(CONFIG_FILE, str) end)
+			local ok = pcall(function() writefile(CONFIG_FILE, str) end)
+			return ok
 		end
+		return false
 	end
 
 	local function readLocalFile()
@@ -2995,16 +3025,22 @@ local function setupAim()
 		dirtyAt = nil
 
 		-- 1. Always save locally to file (persists across game joins / leaves!)
-		saveLocalFile(code)
+		local savedLocally = saveLocalFile(code)
 
 		-- 2. If game server has AimBotConfig RemoteFunction, save there too
+		local savedRemotely = false
 		if saveRemote then
-			pcall(saveRemote.InvokeServer, saveRemote, "save", code)
+			local ok, res = pcall(saveRemote.InvokeServer, saveRemote, "save", code)
+			savedRemotely = ok and (res == true)
 		end
 
 		saveBusy = false
-		lastSaved = code
-		setStatus(trf("Saved at %s - next time they load by themselves", os.date("%H:%M")), COLORS.slime)
+		if savedLocally or savedRemotely then
+			lastSaved = code
+			setStatus(trf("Saved at %s - next time they load by themselves", os.date("%H:%M")), COLORS.slime)
+		else
+			setStatus("Executor does not support writefile - cannot save locally", COLORS.gold)
+		end
 	end
 	flushSave = saveNow
 	state.onMenuClosed = function()
