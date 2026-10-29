@@ -3833,11 +3833,8 @@ local function setupAim()
 				myRoot.CFrame = CFrame.new(myRoot.Position) * CFrame.Angles(0, yaw, 0)
 			end
 
-			-- [[ СИНХРОНИЗАЦИЯ КАМЕРЫ РОБЛОКСА: КАМЕРА ОСТАЁТСЯ ТАМ, КУДА ЦЕЛИЛИСЬ (БЕЗ ОТКАТА НАЗАД) ]]
+			-- [[ КАМЕРА ОСТАЁТСЯ ТАМ, КУДА ЦЕЛИЛИСЬ (БЕЗ ОТКАТА НАЗАД) ]]
 			pcall(function()
-				local look = cam.CFrame.LookVector
-				local yaw = math.atan2(-look.X, -look.Z)
-				local pitch = math.asin(math.clamp(look.Y, -0.999, 0.999))
 				local ps = player:FindFirstChild("PlayerScripts")
 				local pmMod = ps and ps:FindFirstChild("PlayerModule")
 				if pmMod then
@@ -3845,12 +3842,32 @@ local function setupAim()
 					local cameras = pm and pm:GetCameras()
 					local controller = cameras and cameras.activeCameraController
 					if controller then
+						if controller.Reset then
+							controller:Reset()
+						end
+						local look = cam.CFrame.LookVector
+						local yaw = math.atan2(-look.X, -look.Z)
+						local pitch = math.asin(math.clamp(look.Y, -0.999, 0.999))
 						controller.cameraYaw = yaw
 						controller.cameraPitch = pitch
 					end
 				end
 			end)
 		else
+			if aimLook then
+				pcall(function()
+					local ps = player:FindFirstChild("PlayerScripts")
+					local pmMod = ps and ps:FindFirstChild("PlayerModule")
+					if pmMod then
+						local pm = require(pmMod)
+						local cameras = pm and pm:GetCameras()
+						local controller = cameras and cameras.activeCameraController
+						if controller and controller.Reset then
+							controller:Reset()
+						end
+					end
+				end)
+			end
 			aimLook = nil
 		end
 	end)
