@@ -3814,41 +3814,20 @@ local function setupAim()
 			targetInfo.Visible = false
 		end
 
-		-- [[ ADVANCED NATIVE AIM ENGINE: HYBRID MOUSE & CAMERA ]]
+		-- [[ ROCK-SOLID PURE AIM ENGINE: ZERO JITTER, ZERO FLING ]]
 		if lockedPart then
 			local targetPos = aimPosition(lockedPart)
-			local want = wantedLook(cam, lockedPart)
-			local moveMouse = (not isMobile) and (typeof(mousemoverel) == "function" and mousemoverel or (typeof(mouse_moverel) == "function" and mouse_moverel))
+			local camPos = cam.CFrame.Position
+			local want = (targetPos - camPos).Unit
 
-			if moveMouse then
-				-- On PC: Feed mouse movement directly into Roblox engine.
-				-- This fixes 100% of weapon sway drift, eliminates 1-frame viewmodel lag,
-				-- and makes spectating view 100% legit and natural for teammates!
-				local sp, onScreen = cam:WorldToViewportPoint(targetPos)
-				if onScreen then
-					local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-					local diff = Vector2.new(sp.X - center.X, sp.Y - center.Y)
-					local speed = AIM.InstantSnap and 0.85 or math.clamp(AIM.Smoothness * 0.45, 0.08, 0.7)
-					local mx = diff.X * speed
-					local my = diff.Y * speed
-					if math.abs(mx) > 0.1 or math.abs(my) > 0.1 then
-						pcall(moveMouse, mx, my)
-					end
-				else
-					aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
-					cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
-				end
+			if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
+				cam.CFrame = CFrame.lookAt(camPos, camPos + want)
 			else
-				-- Mobile / fallback: Direct CFrame adjustment
-				aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
-				cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
-			end
-
-			-- Keep Humanoid.AutoRotate active for natural physics
-			local myChar = player.Character
-			local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-			if hum and not hum.AutoRotate then
-				hum.AutoRotate = true
+				-- Bounded smooth lerp: mathematically impossible to overshoot or flip backwards
+				local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
+				local alpha = 1 - (1 - speed) ^ (dt * 90)
+				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
+				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
 			end
 		else
 			aimLook = nil
