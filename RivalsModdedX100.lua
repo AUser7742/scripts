@@ -3773,9 +3773,7 @@ local function setupAim()
 			end
 		end
 
-		if AIM.AimMode == "Override" and aimLook then
-			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
-		end
+
 
 		local targets = getTargets()
 		updateESP(cam, targets)
@@ -3808,38 +3806,24 @@ local function setupAim()
 			targetInfo.Visible = false
 		end
 
-		if AIM.AimMode == "Classic" and lockedPart then
-			local camPos = cam.CFrame.Position
+		-- [[ UNIFIED AIM ROTATION & CHARACTER SYNC ]]
+		if lockedPart then
 			local want = wantedLook(cam, lockedPart)
-			local look = trackLook(cam.CFrame.LookVector, want, dt)
-			cam.CFrame = lookCFrame(camPos, look)
-		end
-	end)
+			aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
+			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
 
-	local function applyOverride(cam)
-		cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
-	end
-
-	RunService:BindToRenderStep("AimOverride", Enum.RenderPriority.Last.Value, function(dt)
-		if AIM.AimMode ~= "Override" or not lockedPart then
-			aimLook = nil
-			return
-		end
-		local cam = workspace.CurrentCamera
-		if not cam then return end
-
-		local want = wantedLook(cam, lockedPart)
-		aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
-
-		applyOverride(cam)
-	end)
-
-	RunService.RenderStepped:Connect(function()
-		if AIM.AimMode == "Override" and aimLook and lockedPart then
-			local cam = workspace.CurrentCamera
-			if cam then
-				applyOverride(cam)
+			-- Synchronize character body rotation so weapon does NOT slide sideways,
+			-- and spectators/teammates see your character aiming properly at the enemy
+			local myChar = player.Character
+			local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			if myRoot then
+				local flatLook = Vector3.new(aimLook.X, 0, aimLook.Z)
+				if flatLook.Magnitude > 0.01 then
+					myRoot.CFrame = CFrame.lookAt(myRoot.Position, myRoot.Position + flatLook.Unit)
+				end
 			end
+		else
+			aimLook = nil
 		end
 	end)
 
