@@ -3764,12 +3764,13 @@ local function setupAim()
 		local cam = workspace.CurrentCamera
 		if not cam then return end
 
-		-- [[ NO CAMERA SHAKE ]]
+		-- [[ NO CAMERA SHAKE (SAFE) ]]
+		-- Only dampens extreme recoil shake without breaking the walking viewmodel alignment
 		if AIM.NoCameraShake then
 			local myChar = player.Character
 			local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-			if hum and hum.CameraOffset.Magnitude > 0.005 then
-				hum.CameraOffset = Vector3.zero
+			if hum and hum.CameraOffset.Magnitude > 0.8 then
+				hum.CameraOffset = hum.CameraOffset.Unit * 0.8
 			end
 		end
 
@@ -3806,21 +3807,17 @@ local function setupAim()
 			targetInfo.Visible = false
 		end
 
-		-- [[ UNIFIED AIM ROTATION & CHARACTER SYNC ]]
+		-- [[ CLEAN AIM ROTATION (NO SLIDING, NATURAL MOVEMENT) ]]
 		if lockedPart then
 			local want = wantedLook(cam, lockedPart)
 			aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
 			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
 
-			-- Synchronize character body rotation so weapon does NOT slide sideways,
-			-- and spectators/teammates see your character aiming properly at the enemy
+			-- Enable natural Roblox character auto-rotate so physics and spectator view remain 100% smooth
 			local myChar = player.Character
-			local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-			if myRoot then
-				local flatLook = Vector3.new(aimLook.X, 0, aimLook.Z)
-				if flatLook.Magnitude > 0.01 then
-					myRoot.CFrame = CFrame.lookAt(myRoot.Position, myRoot.Position + flatLook.Unit)
-				end
+			local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+			if hum and not hum.AutoRotate then
+				hum.AutoRotate = true
 			end
 		else
 			aimLook = nil
