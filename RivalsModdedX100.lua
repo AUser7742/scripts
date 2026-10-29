@@ -3521,11 +3521,9 @@ local function setupAim()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 	local function getAimCenter(cam)
+		-- FOV circle & aim center ALWAYS locked to screen crosshair center!
 		local vs = cam.ViewportSize
-		if isMobile or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-			return Vector2.new(vs.X / 2, vs.Y / 2), true
-		end
-		return UserInputService:GetMouseLocation(), false
+		return Vector2.new(vs.X / 2, vs.Y / 2), true
 	end
 
 	local function aimRayDirection(cam)
