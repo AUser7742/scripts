@@ -2272,7 +2272,7 @@ hero(homePage)
 local homeStats = statGrid(homePage, {
 	{ halloweenCountdown(), "until Halloween" },
 	{ CONFIG.ToggleKey.Name, "toggle menu" },
-	{ THEME.Name, "menu theme" },
+	{ "RIVALS", "Current place" },
 })
 table.insert(languageHooks, function()
 	homeStats[1].Text = halloweenCountdown()
@@ -2307,6 +2307,8 @@ local function setupAim()
 		KnifeAuto = true,
 		KnifeAutoRange = 8.5,
 		ESPShowWeapon = true,
+		NoCameraShake = true,
+		ShowKeybinds = true,
 		TeamCheck = true,
 		TeamMode = "Auto",
 		TeamAttribute = "Team",
@@ -2926,6 +2928,7 @@ local function setupAim()
 	teamInfoLabel = teamText
 	aimToggle(aimPage, "Wall Check", "Don't aim through walls", "WallCheck")
 	aimToggle(aimPage, "Target Bots", "NPCs with a Humanoid too", "TargetNPC")
+	aimToggle(aimPage, "No Camera Shake", "Removes camera wobble and recoil shake", "NoCameraShake")
 	aimToggle(aimPage, "Show FOV Circle", "Circle around the aim point", "ShowFOV")
 	aimToggle(aimPage, "Show Target", "Name and distance at the top", "ShowTargetInfo")
 
@@ -3762,6 +3765,15 @@ local function setupAim()
 	RunService:BindToRenderStep("AimMain", Enum.RenderPriority.Camera.Value + 1, function(dt)
 		local cam = workspace.CurrentCamera
 		if not cam then return end
+
+		-- [[ NO CAMERA SHAKE ]]
+		if AIM.NoCameraShake then
+			local myChar = player.Character
+			local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+			if hum and hum.CameraOffset.Magnitude > 0.005 then
+				hum.CameraOffset = Vector3.zero
+			end
+		end
 
 		if AIM.AimMode == "Override" and aimLook then
 			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
