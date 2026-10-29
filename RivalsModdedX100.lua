@@ -3823,6 +3823,15 @@ local function setupAim()
 				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
 				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
 			end
+
+			-- ПОВОРОТ ТЕЛА И ОРУЖИЯ К ЦЕЛИ (чтобы оружие и руки смотрели строго на врага)
+			local myChar = player.Character
+			local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			if myRoot then
+				local look = cam.CFrame.LookVector
+				local yaw = math.atan2(-look.X, -look.Z)
+				myRoot.CFrame = CFrame.new(myRoot.Position) * CFrame.Angles(0, yaw, 0)
+			end
 		else
 			aimLook = nil
 		end
