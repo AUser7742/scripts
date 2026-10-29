@@ -3135,11 +3135,13 @@ local function setupAim()
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == AIM.AimHoldButton then
 			holding = false
+			lockedPart, lockedTarget = nil, nil
 		end
 	end)
 
 	UserInputService.WindowFocusReleased:Connect(function()
 		holding = false
+		lockedPart, lockedTarget = nil, nil
 	end)
 
 	local TEAM_FIELDS = { AIM.TeamAttribute, "Team", "TeamName", "TeamId", "TeamID", "TeamColor", "Side", "Squad" }
@@ -3620,22 +3622,27 @@ local function setupAim()
 	local function getClosestTarget(cam, targets, current)
 		local center = getAimCenter(cam)
 
-		if current and AIM.StickyTarget then
-			local part = checkTarget(cam, current, center, AIM.FOV * KEEP_RADIUS)
-			if part then
-				lockSeenAt = os.clock()
-				return part, current
-			end
-			if os.clock() - lockSeenAt < math.max(AIM.LockGrace, MIN_GRACE)
-				and current.char.Parent and aliveHumanoid(current.char)
-				and not (AIM.TeamCheck and isTeammate(current.plr)) then
-				local p = getAimPart(current.char)
-				if p then
-					return p, current
+		-- [[ УДЕРЖАНИЕ ЦЕЛИ / TARGET HOLD ]]
+		-- Если цель уже была захвачена в FOV и мы продолжаем держать ПКМ (или на мобиле):
+		-- Аимбот продолжает держать эту цель ДАЖЕ ЕСЛИ ОНА ВЫШЛА ИЗ КРУГА FOV!
+		if current and (holding or isMobile) then
+			local char = current.char
+			if char and char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField") then
+				if not (AIM.TeamCheck and isTeammate(current.plr)) then
+					local part = getAimPart(char)
+					if part then
+						local visible = isVisible(cam, part, char)
+						if visible or not AIM.WallCheck or (holding and AIM.HoldThroughWalls) then
+							lockSeenAt = os.clock()
+							return part, current
+						end
+					end
 				end
 			end
 		end
 
+		-- [[ ПЕРВИЧНЫЙ ЗАХВАТ: ТОЛЬКО В ЗОНЕ КРУГА FOV ]]
+		-- Если в начале в FOV никого нет, аимбот никого вне круга не захватывает!
 		local bestPart, bestTarget, bestDist = nil, nil, AIM.FOV
 		for _, t in ipairs(targets) do
 			local part, dist = checkTarget(cam, t, center, bestDist)
