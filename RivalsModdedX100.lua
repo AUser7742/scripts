@@ -687,7 +687,7 @@ local function shimmer(textObject)
 	return gradient
 end
 
-local GUI_NAME = "GameMenu"
+local GUI_NAME = "RivalsModded_Unique_v7"
 
 local function getSafeGuiParent()
 	local okHui, hui = pcall(function() return gethui and gethui() end)
@@ -2292,6 +2292,7 @@ section(homePage, "Quick start")
 local _, homeHowText = paragraph(homePage, "How to use", "")
 
 local function setupAim()
+	local wasAiming = false
 	local MarketplaceService = game:GetService("MarketplaceService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -2306,7 +2307,7 @@ local function setupAim()
 		Prediction = 0,
 		StickyTarget = true,
 		LockGrace = 0,
-		HoldToAim = true,
+		HoldToAim = false,
 		HoldThroughWalls = false,
 		AutoShoot = "All",
 		AutoShootAngle = 10,
@@ -3867,8 +3868,12 @@ local function setupAim()
 			targetInfo.Visible = false
 		end
 
+		-- Поворот торса и рук с оружием к направлению камеры (всегда, плавно)
+		rotateBodyToLook(player.Character, cam.CFrame.LookVector)
+
 		-- [[ ROCK-SOLID PURE AIM ENGINE: ZERO JITTER, ZERO FLING ]]
 		if lockedPart then
+			wasAiming = true
 			local targetPos = aimPosition(lockedPart)
 			local camPos = cam.CFrame.Position
 			local want = (targetPos - camPos).Unit
@@ -3876,54 +3881,23 @@ local function setupAim()
 			if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
 				cam.CFrame = CFrame.lookAt(camPos, camPos + want)
 			else
-				-- Bounded smooth lerp: mathematically impossible to overshoot or flip backwards
 				local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
 				local alpha = 1 - (1 - speed) ^ (dt * 90)
 				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
 				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
 			end
-
-			-- ПРАВИЛЬНЫЙ ПОВОРОТ ТОРСА, РУК И ОРУЖИЯ ЧЕРЕЗ СУСТАВ WAIST MOTOR6D
-			-- Сохраняет физику, не ломает кости, оружие не отваливается и стрельба работает!
-			rotateBodyToLook(player.Character, cam.CFrame.LookVector)
-
-			-- [[ КАМЕРА ОСТАЁТСЯ ТАМ, КУДА ЦЕЛИЛИСЬ (БЕЗ ОТКАТА НАЗАД) ]]
-			pcall(function()
-				local ps = player:FindFirstChild("PlayerScripts")
-				local pmMod = ps and ps:FindFirstChild("PlayerModule")
-				if pmMod then
-					local pm = require(pmMod)
-					local cameras = pm and pm:GetCameras()
-					local controller = cameras and cameras.activeCameraController
-					if controller then
-						if controller.Reset then
-							controller:Reset()
-						end
-						local look = cam.CFrame.LookVector
-						local yaw = math.atan2(-look.X, -look.Z)
-						local pitch = math.asin(math.clamp(look.Y, -0.999, 0.999))
-						controller.cameraYaw = yaw
-						controller.cameraPitch = pitch
-					end
-				end
-			end)
 		else
-			resetBodyRotation(player.Character)
-			if aimLook then
+			if wasAiming then
+				wasAiming = false
+				-- Синхронизация камеры при отпускании цели: переключение Custom сбрасывает базовый угол
 				pcall(function()
-					local ps = player:FindFirstChild("PlayerScripts")
-					local pmMod = ps and ps:FindFirstChild("PlayerModule")
-					if pmMod then
-						local pm = require(pmMod)
-						local cameras = pm and pm:GetCameras()
-						local controller = cameras and cameras.activeCameraController
-						if controller and controller.Reset then
-							controller:Reset()
-						end
+					cam.CameraType = Enum.CameraType.Custom
+					local myHum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+					if myHum then
+						cam.CameraSubject = myHum
 					end
 				end)
 			end
-			aimLook = nil
 		end
 	end)
 
