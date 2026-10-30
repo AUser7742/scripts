@@ -3871,32 +3871,45 @@ local function setupAim()
 		-- Поворот торса и рук с оружием к направлению камеры (всегда, плавно)
 		rotateBodyToLook(player.Character, cam.CFrame.LookVector)
 
-		-- [[ ROCK-SOLID PURE AIM ENGINE: ZERO JITTER, ZERO FLING ]]
-		if lockedPart then
-			wasAiming = true
-			local targetPos = aimPosition(lockedPart)
-			local camPos = cam.CFrame.Position
-			local want = (targetPos - camPos).Unit
+		-- [[ ДВИЖОК АИМА: NATIVE MOUSE MOVEMENT НА ПК (ОРУЖИЕ ШЕВЕЛИТСЯ, НОЛЬ ОТКАТОВ КАМЕРЫ) + LERP НА МОБИЛКАХ ]]
+		local hasMouseMove = (typeof(mousemoverel) == "function") and not isMobile
 
-			if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
-				cam.CFrame = CFrame.lookAt(camPos, camPos + want)
+		if lockedPart then
+			local targetPos = aimPosition(lockedPart)
+			local targetScreen, onScreen = cam:WorldToViewportPoint(targetPos)
+
+			if hasMouseMove and onScreen then
+				local center = cam.ViewportSize / 2
+				local diff = Vector2.new(targetScreen.X - center.X, targetScreen.Y - center.Y)
+
+				local smoothDiv
+				if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
+					smoothDiv = 1.25
+				else
+					smoothDiv = math.clamp(4.2 / math.clamp(AIM.Smoothness, 0.2, 1), 1.5, 12)
+				end
+
+				local moveX = diff.X / smoothDiv
+				local moveY = diff.Y / smoothDiv
+
+				-- Безопасный порог смещения: полностью исключает перелёты и дрожание
+				local maxStep = 45
+				moveX = math.clamp(moveX, -maxStep, maxStep)
+				moveY = math.clamp(moveY, -maxStep, maxStep)
+
+				pcall(function() mousemoverel(moveX, moveY) end)
 			else
-				local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
-				local alpha = 1 - (1 - speed) ^ (dt * 90)
-				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
-				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
-			end
-		else
-			if wasAiming then
-				wasAiming = false
-				-- Синхронизация камеры при отпускании цели: переключение Custom сбрасывает базовый угол
-				pcall(function()
-					cam.CameraType = Enum.CameraType.Custom
-					local myHum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-					if myHum then
-						cam.CameraSubject = myHum
-					end
-				end)
+				-- Резервный режим (для мобильных или когда цель за экраном)
+				local camPos = cam.CFrame.Position
+				local want = (targetPos - camPos).Unit
+				if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
+					cam.CFrame = CFrame.lookAt(camPos, camPos + want)
+				else
+					local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
+					local alpha = 1 - (1 - speed) ^ (dt * 90)
+					local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
+					cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
+				end
 			end
 		end
 	end)
