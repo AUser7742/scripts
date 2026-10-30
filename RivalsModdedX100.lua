@@ -438,6 +438,13 @@ local TEXTS = {
 	["Auto Heavy Attack in timing (150 damage)"] = { ru = "Авто-удар Heavy Attack в тайминг на 150 урона", gd = "Fèin-bhualadh Heavy Attack (150 milleadh)", fr = "Frappe lourde auto 150 dégâts" },
 	["KnifeAuto Range"] = { ru = "Дальность KnifeAuto", gd = "Raon KnifeAuto", fr = "Portée KnifeAuto" },
 	["Show Weapon in ESP"] = { ru = "Показывать оружие в ESP", gd = "Seall arm ann an ESP", fr = "Afficher l'arme dans l'ESP" },
+	["Movement & Evasion"] = { ru = "Движение и уклонение", gd = "Gluasad agus seachnadh", fr = "Mouvement & Esquive" },
+	["BunnyHop"] = { ru = "BunnyHop (Авто-прыжки)", gd = "BunnyHop", fr = "BunnyHop" },
+	["Auto-jump while moving (maximum speed)"] = { ru = "Авто-прыжки при ходьбе для максимальной скорости", gd = "Fèin-leum", fr = "Saut automatique en déplacement" },
+	["Crouch Spam"] = { ru = "Crouch Spam (Приседания при стрельбе)", gd = "Crouch Spam", fr = "Crouch Spam" },
+	["Auto-crouch while shooting to dodge headshots"] = { ru = "Быстрые приседания во время стрельбы для уклонения от хедшотов", gd = "Crouch fèin-obrachail", fr = "S'accroupir automatiquement en tirant" },
+	["Smart ESP Colors"] = { ru = "Умный цвет ESP (Видим / За стеной)", gd = "Dathan ESP snasail", fr = "Couleurs ESP intelligentes" },
+	["Green when exposed, red when behind wall"] = { ru = "Зеленый если открыт, красный если за стеной", gd = "Uaine nuair a tha e fosgailte, dearg air cùlaibh balla", fr = "Vert si visible, rouge derrière un mur" },
 }
 
 local DICT, REVERSE = {}, {}
@@ -2319,6 +2326,9 @@ local function setupAim()
 		ESPShowWeapon = true,
 		NoCameraShake = true,
 		ShowKeybinds = true,
+		BunnyHop = true,
+		CrouchSpam = true,
+		SmartESPColors = true,
 		TeamCheck = true,
 		TeamMode = "Auto",
 		TeamAttribute = "Team",
@@ -2922,6 +2932,10 @@ local function setupAim()
 		onSettingsChanged()
 	end)
 
+	section(aimPage, "Movement & Evasion")
+	aimToggle(aimPage, "BunnyHop", "Auto-jump while moving (maximum speed)", "BunnyHop")
+	aimToggle(aimPage, "Crouch Spam", "Auto-crouch while shooting to dodge headshots", "CrouchSpam")
+
 	section(aimPage, "KnifeAuto (150 DMG)")
 	aimToggle(aimPage, "KnifeAuto", "Auto Heavy Attack in timing (150 damage)", "KnifeAuto")
 	aimSlider(aimPage, "KnifeAuto Range", "KnifeAutoRange", 3, 20, 1, function(v)
@@ -2959,6 +2973,7 @@ local function setupAim()
 	local espPage = createTab("ESP", "◇", "See where players are")
 	section(espPage, "ESP")
 	aimToggle(espPage, "ESP", "Show players through walls", "ESP")
+	aimToggle(espPage, "Smart ESP Colors", "Green when exposed, red when behind wall", "SmartESPColors")
 	aimToggle(espPage, "Show Weapon in ESP", "Display held item under player name", "ESPShowWeapon")
 	aimToggle(espPage, "Highlight", "Glowing outline through walls", "ESPHighlight")
 	aimToggle(espPage, "Names", "Name above the head", "ESPNames")
@@ -3482,11 +3497,21 @@ local function setupAim()
 					if (AIM.ESPTeammates or not mate) and dist <= AIM.ESPMaxDistance then
 						seen[char] = true
 						local o = espObjects[char] or createESP(char)
-						local color = mate and COLORS.team or COLORS.enemy
+						local visible = isVisible(cam, getAimPart(char) or root, char)
+						local color
+						if mate then
+							color = COLORS.team
+						else
+							if AIM.SmartESPColors then
+								color = visible and Color3.fromRGB(0, 255, 140) or Color3.fromRGB(255, 65, 65)
+							else
+								color = COLORS.enemy
+							end
+						end
 
 						o.highlight.Enabled = AIM.ESPHighlight
 						o.highlight.FillColor = color
-						o.highlight.OutlineColor = color
+						o.highlight.OutlineColor = (not mate and AIM.SmartESPColors and visible) and Color3.fromRGB(255, 255, 255) or color
 
 						o.billboard.Adornee = char:FindFirstChild("Head") or root
 						o.billboard.Enabled = AIM.ESPNames or AIM.ESPDistance or AIM.ESPHealth
@@ -3967,6 +3992,47 @@ local function setupAim()
 		elseif firing then
 			setTrigger(false)
 			firing = false
+		end
+	end)
+
+	-- [[ 3. MOVEMENT & CROUCH SPAM ENGINE ]]
+	local VirtualInputManager = game:GetService("VirtualInputManager")
+	local lastCrouchToggle, crouchDown = 0, false
+
+	RunService.Heartbeat:Connect(function()
+		local myChar = player.Character
+		local hum = myChar and aliveHumanoid(myChar)
+		if not hum then
+			if crouchDown then
+				crouchDown = false
+				pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game) end)
+			end
+			return
+		end
+
+		-- A) BUNNYHOP: непрерывные прыжки при движении на полной скорости
+		if AIM.BunnyHop and hum.MoveDirection.Magnitude > 0.05 and hum.FloorMaterial ~= Enum.Material.Air then
+			hum.Jump = true
+		end
+
+		-- B) CROUCH SPAM: быстрые приседания во время стрельбы (уклонение от хедшотов)
+		local isShooting = firing or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+		if AIM.CrouchSpam and isShooting then
+			local now = os.clock()
+			if now - lastCrouchToggle >= 0.18 then
+				lastCrouchToggle = now
+				crouchDown = not crouchDown
+				pcall(function()
+					VirtualInputManager:SendKeyEvent(crouchDown, Enum.KeyCode.C, false, game)
+				end)
+			end
+		else
+			if crouchDown then
+				crouchDown = false
+				pcall(function()
+					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game)
+				end)
+			end
 		end
 	end)
 end
