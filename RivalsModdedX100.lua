@@ -689,10 +689,18 @@ end
 
 local GUI_NAME = "GameMenu"
 
-local guiParent = playerGui
-local oldGui = playerGui:FindFirstChild(GUI_NAME)
+local function getSafeGuiParent()
+	local okHui, hui = pcall(function() return gethui and gethui() end)
+	if okHui and hui then return hui end
+	local okCg, cg = pcall(function() return game:GetService("CoreGui") end)
+	if okCg and cg then return cg end
+	return playerGui
+end
+local guiParent = getSafeGuiParent()
+
+local oldGui = guiParent:FindFirstChild(GUI_NAME) or playerGui:FindFirstChild(GUI_NAME)
 if oldGui then
-	oldGui:Destroy()
+	pcall(function() oldGui:Destroy() end)
 end
 local oldBlur = Lighting:FindFirstChild(GUI_NAME .. "_Blur")
 if oldBlur then
@@ -2382,11 +2390,11 @@ local function setupAim()
 	hud.IgnoreGuiInset = true
 	hud.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	hud.DisplayOrder = 5
-	hud.Parent = playerGui
+	hud.Parent = guiParent
 
 	local espFolder = Instance.new("Folder")
 	espFolder.Name = "AimESP"
-	espFolder.Parent = playerGui
+	espFolder.Parent = guiParent
 
 	local circle = Instance.new("Frame")
 	circle.Name = "FOVCircle"
@@ -3761,6 +3769,57 @@ local function setupAim()
 		return diagnoseText
 	end
 
+	-- Кэш оригинального положения суставов для правильного поворота торса и рук
+	local jointC0Cache = setmetatable({}, { __mode = "k" })
+
+	local function rotateBodyToLook(char, camLook)
+		if not (char and aliveHumanoid(char)) then return end
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		
+		-- Перевод направления камеры в локальные координаты персонажа
+		local relLook = root.CFrame:VectorToObjectSpace(camLook)
+		local yaw = math.atan2(-relLook.X, -relLook.Z)
+		local pitch = math.asin(math.clamp(relLook.Y, -0.999, 0.999))
+		
+		-- R15: Верхний торс и сустав Waist (поворачивает торс, голову и обе руки с оружием)
+		local upperTorso = char:FindFirstChild("UpperTorso")
+		local waist = upperTorso and upperTorso:FindFirstChild("Waist")
+		if waist and waist:IsA("Motor6D") then
+			if not jointC0Cache[waist] then
+				jointC0Cache[waist] = waist.C0
+			end
+			local origC0 = jointC0Cache[waist]
+			waist.C0 = origC0 * CFrame.Angles(pitch, yaw, 0)
+			return
+		end
+		
+		-- R6: Сустав RootJoint
+		local torso = char:FindFirstChild("Torso")
+		local rootJoint = torso and torso:FindFirstChild("RootJoint")
+		if rootJoint and rootJoint:IsA("Motor6D") then
+			if not jointC0Cache[rootJoint] then
+				jointC0Cache[rootJoint] = rootJoint.C0
+			end
+			local origC0 = jointC0Cache[rootJoint]
+			rootJoint.C0 = origC0 * CFrame.Angles(0, 0, -yaw)
+		end
+	end
+
+	local function resetBodyRotation(char)
+		if not char then return end
+		local upperTorso = char:FindFirstChild("UpperTorso")
+		local waist = upperTorso and upperTorso:FindFirstChild("Waist")
+		if waist and jointC0Cache[waist] then
+			waist.C0 = jointC0Cache[waist]
+		end
+		local torso = char:FindFirstChild("Torso")
+		local rootJoint = torso and torso:FindFirstChild("RootJoint")
+		if rootJoint and jointC0Cache[rootJoint] then
+			rootJoint.C0 = jointC0Cache[rootJoint]
+		end
+	end
+
 	RunService:BindToRenderStep("AimMain", Enum.RenderPriority.Camera.Value + 1, function(dt)
 		local cam = workspace.CurrentCamera
 		if not cam then return end
@@ -3824,14 +3883,9 @@ local function setupAim()
 				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
 			end
 
-			-- ПОВОРОТ ТЕЛА И ОРУЖИЯ К ЦЕЛИ (чтобы оружие и руки смотрели строго на врага)
-			local myChar = player.Character
-			local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-			if myRoot then
-				local look = cam.CFrame.LookVector
-				local yaw = math.atan2(-look.X, -look.Z)
-				myRoot.CFrame = CFrame.new(myRoot.Position) * CFrame.Angles(0, yaw, 0)
-			end
+			-- ПРАВИЛЬНЫЙ ПОВОРОТ ТОРСА, РУК И ОРУЖИЯ ЧЕРЕЗ СУСТАВ WAIST MOTOR6D
+			-- Сохраняет физику, не ломает кости, оружие не отваливается и стрельба работает!
+			rotateBodyToLook(player.Character, cam.CFrame.LookVector)
 
 			-- [[ КАМЕРА ОСТАЁТСЯ ТАМ, КУДА ЦЕЛИЛИСЬ (БЕЗ ОТКАТА НАЗАД) ]]
 			pcall(function()
@@ -3854,6 +3908,7 @@ local function setupAim()
 				end
 			end)
 		else
+			resetBodyRotation(player.Character)
 			if aimLook then
 				pcall(function()
 					local ps = player:FindFirstChild("PlayerScripts")
