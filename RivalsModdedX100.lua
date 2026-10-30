@@ -2293,6 +2293,7 @@ local _, homeHowText = paragraph(homePage, "How to use", "")
 
 local function setupAim()
 	local wasAiming = false
+	local origSens = UserInputService.MouseDeltaSensitivity
 	local MarketplaceService = game:GetService("MarketplaceService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -3770,57 +3771,6 @@ local function setupAim()
 		return diagnoseText
 	end
 
-	-- Кэш оригинального положения суставов для правильного поворота торса и рук
-	local jointC0Cache = setmetatable({}, { __mode = "k" })
-
-	local function rotateBodyToLook(char, camLook)
-		if not (char and aliveHumanoid(char)) then return end
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-		
-		-- Перевод направления камеры в локальные координаты персонажа
-		local relLook = root.CFrame:VectorToObjectSpace(camLook)
-		local yaw = math.atan2(-relLook.X, -relLook.Z)
-		local pitch = math.asin(math.clamp(relLook.Y, -0.999, 0.999))
-		
-		-- R15: Верхний торс и сустав Waist (поворачивает торс, голову и обе руки с оружием)
-		local upperTorso = char:FindFirstChild("UpperTorso")
-		local waist = upperTorso and upperTorso:FindFirstChild("Waist")
-		if waist and waist:IsA("Motor6D") then
-			if not jointC0Cache[waist] then
-				jointC0Cache[waist] = waist.C0
-			end
-			local origC0 = jointC0Cache[waist]
-			waist.C0 = origC0 * CFrame.Angles(pitch, yaw, 0)
-			return
-		end
-		
-		-- R6: Сустав RootJoint
-		local torso = char:FindFirstChild("Torso")
-		local rootJoint = torso and torso:FindFirstChild("RootJoint")
-		if rootJoint and rootJoint:IsA("Motor6D") then
-			if not jointC0Cache[rootJoint] then
-				jointC0Cache[rootJoint] = rootJoint.C0
-			end
-			local origC0 = jointC0Cache[rootJoint]
-			rootJoint.C0 = origC0 * CFrame.Angles(0, 0, -yaw)
-		end
-	end
-
-	local function resetBodyRotation(char)
-		if not char then return end
-		local upperTorso = char:FindFirstChild("UpperTorso")
-		local waist = upperTorso and upperTorso:FindFirstChild("Waist")
-		if waist and jointC0Cache[waist] then
-			waist.C0 = jointC0Cache[waist]
-		end
-		local torso = char:FindFirstChild("Torso")
-		local rootJoint = torso and torso:FindFirstChild("RootJoint")
-		if rootJoint and jointC0Cache[rootJoint] then
-			rootJoint.C0 = jointC0Cache[rootJoint]
-		end
-	end
-
 	RunService:BindToRenderStep("AimMain", Enum.RenderPriority.Camera.Value + 1, function(dt)
 		local cam = workspace.CurrentCamera
 		if not cam then return end
@@ -3868,48 +3818,36 @@ local function setupAim()
 			targetInfo.Visible = false
 		end
 
-		-- Поворот торса и рук с оружием к направлению камеры (всегда, плавно)
-		rotateBodyToLook(player.Character, cam.CFrame.LookVector)
-
-		-- [[ ДВИЖОК АИМА: NATIVE MOUSE MOVEMENT НА ПК (ОРУЖИЕ ШЕВЕЛИТСЯ, НОЛЬ ОТКАТОВ КАМЕРЫ) + LERP НА МОБИЛКАХ ]]
-		local hasMouseMove = (typeof(mousemoverel) == "function") and not isMobile
-
+		-- [[ ТОПОВЫЙ И ЧИСТЫЙ PURE LERP АИМБОТ: ИДЕАЛЬНОЕ КАЧЕСТВО, ПЛАВНОСТЬ И ТОЧНОСТЬ ]]
 		if lockedPart then
+			if not wasAiming then
+				wasAiming = true
+				pcall(function()
+					origSens = UserInputService.MouseDeltaSensitivity
+					UserInputService.MouseDeltaSensitivity = 0
+				end)
+			end
 			local targetPos = aimPosition(lockedPart)
-			local targetScreen, onScreen = cam:WorldToViewportPoint(targetPos)
+			local camPos = cam.CFrame.Position
+			local want = (targetPos - camPos).Unit
 
-			if hasMouseMove and onScreen then
-				local center = cam.ViewportSize / 2
-				local diff = Vector2.new(targetScreen.X - center.X, targetScreen.Y - center.Y)
-
-				local smoothDiv
-				if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
-					smoothDiv = 1.25
-				else
-					smoothDiv = math.clamp(4.2 / math.clamp(AIM.Smoothness, 0.2, 1), 1.5, 12)
-				end
-
-				local moveX = diff.X / smoothDiv
-				local moveY = diff.Y / smoothDiv
-
-				-- Безопасный порог смещения: полностью исключает перелёты и дрожание
-				local maxStep = 45
-				moveX = math.clamp(moveX, -maxStep, maxStep)
-				moveY = math.clamp(moveY, -maxStep, maxStep)
-
-				pcall(function() mousemoverel(moveX, moveY) end)
+			if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
+				cam.CFrame = CFrame.lookAt(camPos, camPos + want)
 			else
-				-- Резервный режим (для мобильных или когда цель за экраном)
-				local camPos = cam.CFrame.Position
-				local want = (targetPos - camPos).Unit
-				if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
-					cam.CFrame = CFrame.lookAt(camPos, camPos + want)
-				else
-					local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
-					local alpha = 1 - (1 - speed) ^ (dt * 90)
-					local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
-					cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
-				end
+				local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
+				local alpha = 1 - (1 - speed) ^ (dt * 90)
+				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
+				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
+			end
+		else
+			if wasAiming then
+				wasAiming = false
+				pcall(function()
+					UserInputService.MouseDeltaSensitivity = origSens
+					cam.CameraType = Enum.CameraType.Custom
+					local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+					if hum then cam.CameraSubject = hum end
+				end)
 			end
 		end
 	end)
