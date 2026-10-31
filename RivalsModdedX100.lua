@@ -2339,6 +2339,8 @@ local function setupAim()
 		Language = currentLanguage,
 		HeadOnly = true,
 		AimHeight = 0.2,
+		FreezeMouse = true,
+		TurnBody = true,
 		ESP = true,
 		ESPHighlight = true,
 		ESPNames = true,
@@ -2355,6 +2357,8 @@ local function setupAim()
 	}
 	local DEFAULTS = table.clone(AIM)
 
+	local releaseBody = function() end
+	local freezeMouse = function() end
 	local enabled = false
 	local holding = false
 	local hasPass = (AIM.GamePassId == 0)
@@ -2916,6 +2920,8 @@ local function setupAim()
 		return v .. " ms"
 	end)
 	aimToggle(aimPage, "Keep Target", "Don't jump between players", "StickyTarget")
+	aimToggle(aimPage, "Hold Mouse On Target", "The mouse doesn't turn the camera and arm while locked", "FreezeMouse")
+	aimToggle(aimPage, "Turn Body To Target", "The character faces the enemy � no shooting with your back", "TurnBody")
 	aimSlider(aimPage, "Keep After Cover", "LockGrace", 0, 1000, 1000, function(v)
 		return v .. " ms"
 	end)
@@ -3166,12 +3172,18 @@ local function setupAim()
 		if input.UserInputType == AIM.AimHoldButton then
 			holding = false
 			lockedPart, lockedTarget = nil, nil
+			aimLook = nil
+			if releaseBody then releaseBody() end
+			if freezeMouse then freezeMouse(false) end
 		end
 	end)
 
 	UserInputService.WindowFocusReleased:Connect(function()
 		holding = false
 		lockedPart, lockedTarget = nil, nil
+		aimLook = nil
+		if releaseBody then releaseBody() end
+		if freezeMouse then freezeMouse(false) end
 	end)
 
 	local TEAM_FIELDS = { AIM.TeamAttribute, "Team", "TeamName", "TeamId", "TeamID", "TeamColor", "Side", "Squad" }
@@ -3662,21 +3674,22 @@ local function setupAim()
 	local function getClosestTarget(cam, targets, current)
 		local center = getAimCenter(cam)
 
-		-- [[ ЖЕЛЕЗНЫЙ ЗАХВАТ: ДЕРЖИМ ЦЕЛЬ ДО КОНЦА (ТОЛЬКО ВИДИМУЮ, В СТЕНЫ НЕ ЦЕЛИМСЯ) ]]
-		if current and (holding or isMobile) then
-			local char = current.char
-			if char and char.Parent and aliveHumanoid(char) and not char:FindFirstChildOfClass("ForceField") then
-				if not (AIM.TeamCheck and isTeammate(current.plr)) then
-					local part = getAimPart(char)
-					if part and isVisible(cam, part, char) then
-						lockSeenAt = os.clock()
-						return part, current
-					end
+		if current and AIM.StickyTarget then
+			local part = checkTarget(cam, current, center, AIM.FOV * KEEP_RADIUS)
+			if part then
+				lockSeenAt = os.clock()
+				return part, current
+			end
+			if os.clock() - lockSeenAt < math.max(AIM.LockGrace, MIN_GRACE)
+				and current.char.Parent and aliveHumanoid(current.char)
+				and not (AIM.TeamCheck and isTeammate(current.plr)) then
+				local p = getAimPart(current.char)
+				if p then
+					return p, current
 				end
 			end
 		end
 
-		-- [[ ПЕРВИЧНЫЙ ЗАХВАТ: ТОЛЬКО ЕСЛИ НЕТ ТЕКУЩЕЙ ЦЕЛИ И ВРАГ В ЗОНЕ FOV ]]
 		local bestPart, bestTarget, bestDist = nil, nil, AIM.FOV
 		for _, t in ipairs(targets) do
 			local part, dist = checkTarget(cam, t, center, bestDist)
@@ -3717,8 +3730,7 @@ local function setupAim()
 		if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
 			return 1
 		end
-		local speed = math.clamp(AIM.Smoothness * 2.8, 0.05, 1)
-		return 1 - (1 - speed) ^ (dt * 120)
+		return 1 - (1 - math.clamp(AIM.Smoothness, 0.01, 1)) ^ (dt * 60)
 	end
 
 	local function rotationBetween(a, b)
@@ -3772,6 +3784,28 @@ local function setupAim()
 		return newLook
 	end
 
+	local mouseFrozen, savedSensitivity = false, 1
+	freezeMouse = function(frozen)
+		if frozen == mouseFrozen then
+			return
+		end
+		pcall(function()
+			if frozen then
+				local current = UserInputService.MouseDeltaSensitivity
+				if current > 0 then
+					savedSensitivity = current
+				end
+				UserInputService.MouseDeltaSensitivity = 0
+			elseif UserInputService.MouseDeltaSensitivity == 0 then
+				UserInputService.MouseDeltaSensitivity = savedSensitivity
+			end
+		end)
+		mouseFrozen = frozen
+	end
+	gui.Destroying:Connect(function()
+		freezeMouse(false)
+	end)
+
 	local diagnoseAt, diagnoseText = 0, ""
 	local function diagnose(cam, targets)
 		if os.clock() - diagnoseAt < 0.25 then
@@ -3800,16 +3834,18 @@ local function setupAim()
 				end
 			end
 		end
-		diagnoseText = trf("No target  •  teammates: %d  •  outside circle: %d  •  behind walls: %d  •  shield: %d", mates, outside, walls, shields)
+		diagnoseText = trf("No target  �  teammates: %d  �  outside circle: %d  �  behind walls: %d  �  shield: %d", mates, outside, walls, shields)
 		return diagnoseText
 	end
 
-	RunService:BindToRenderStep("AimMain", Enum.RenderPriority.Camera.Value + 1, function(dt)
+	-- FIX: The aim turns the camera BEFORE the game camera runs (Camera - 1).
+	-- The game camera then starts from the aim direction, and the weapon / arm scripts of
+	-- the game place the weapon with the final direction in the same frame.
+	RunService:BindToRenderStep("AimMain", Enum.RenderPriority.Camera.Value - 1, function(dt)
 		local cam = workspace.CurrentCamera
 		if not cam then return end
 
 		-- [[ NO CAMERA SHAKE (SAFE) ]]
-		-- Only dampens extreme recoil shake without breaking the walking viewmodel alignment
 		if AIM.NoCameraShake then
 			local myChar = player.Character
 			local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
@@ -3818,7 +3854,9 @@ local function setupAim()
 			end
 		end
 
-
+		if AIM.AimMode == "Override" and aimLook then
+			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
+		end
 
 		local targets = getTargets()
 		updateESP(cam, targets)
@@ -3837,53 +3875,119 @@ local function setupAim()
 			prevWant, prevChar = nil, nil
 		end
 		player:SetAttribute("AimPoint", lockedPart and aimPosition(lockedPart) or nil)
+		freezeMouse(lockedPart ~= nil and AIM.FreezeMouse and not isMobile)
 
 		if lockedTarget and AIM.ShowTargetInfo then
 			local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			local d = myRoot and math.floor((lockedPart.Position - myRoot.Position).Magnitude + 0.5) or 0
 			local enemyWeapon = WeaponDetector.GetHeldItem(lockedTarget.char)
 			local weaponInfo = enemyWeapon and (" [" .. enemyWeapon.Name .. "]") or ""
-			targetInfo.Text = trf("🎯 %s%s  •  %d m", lockedTarget.name, weaponInfo, d)
+			targetInfo.Text = trf("?? %s%s  �  %d m", lockedTarget.name, weaponInfo, d)
 			targetInfo.TextColor3 = COLORS.enemy
 			targetInfo.Visible = true
 		else
-			-- Compact & clean: Hide banner completely when no locked target!
 			targetInfo.Visible = false
 		end
 
-		-- [[ ТОПОВЫЙ И ЧИСТЫЙ PURE LERP АИМБОТ: ИДЕАЛЬНОЕ КАЧЕСТВО, ПЛАВНОСТЬ И ТОЧНОСТЬ ]]
-		if lockedPart then
-			if not wasAiming then
-				wasAiming = true
-				pcall(function()
-					origSens = UserInputService.MouseDeltaSensitivity
-					UserInputService.MouseDeltaSensitivity = 0
-				end)
-			end
-			local targetPos = aimPosition(lockedPart)
+		if lockedPart and AIM.AimMode == "Override" then
+			local want = wantedLook(cam, lockedPart)
+			aimLook = trackLook(aimLook or cam.CFrame.LookVector, want, dt)
+			cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
+		elseif lockedPart then
+			aimLook = nil
 			local camPos = cam.CFrame.Position
-			local want = (targetPos - camPos).Unit
-
-			if AIM.InstantSnap or AIM.Smoothness >= 0.95 then
-				cam.CFrame = CFrame.lookAt(camPos, camPos + want)
-			else
-				local speed = math.clamp(AIM.Smoothness * 2.5, 0.05, 1)
-				local alpha = 1 - (1 - speed) ^ (dt * 90)
-				local newLook = cam.CFrame.LookVector:Lerp(want, alpha).Unit
-				cam.CFrame = CFrame.lookAt(camPos, camPos + newLook)
-			end
+			local want = wantedLook(cam, lockedPart)
+			local look = trackLook(cam.CFrame.LookVector, want, dt)
+			cam.CFrame = lookCFrame(camPos, look)
 		else
-			if wasAiming then
-				wasAiming = false
-				pcall(function()
-					UserInputService.MouseDeltaSensitivity = origSens
-					cam.CameraType = Enum.CameraType.Custom
-					local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-					if hum then cam.CameraSubject = hum end
-				end)
+			aimLook = nil
+		end
+	end)
+
+	local function applyOverride(cam)
+		cam.CFrame = lookCFrame(cam.CFrame.Position, aimLook)
+	end
+
+	-- Rivals mode: put the same aim direction back right after it (before weapon scripts)
+	-- and once more at the end of the frame.
+	RunService:BindToRenderStep("AimOverrideEarly", Enum.RenderPriority.Camera.Value + 1, function()
+		if AIM.AimMode ~= "Override" or not lockedPart or not aimLook then
+			return
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			applyOverride(cam)
+		end
+	end)
+
+	RunService:BindToRenderStep("AimOverride", Enum.RenderPriority.Last.Value, function()
+		if AIM.AimMode ~= "Override" or not lockedPart or not aimLook then
+			return
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			applyOverride(cam)
+		end
+	end)
+
+	RunService.RenderStepped:Connect(function()
+		if AIM.AimMode == "Override" and aimLook and lockedPart then
+			local cam = workspace.CurrentCamera
+			if cam then
+				applyOverride(cam)
 			end
 		end
 	end)
+
+	-- FIX: turn the character's body to the aim direction while a target is locked.
+	local bodyTurned, savedAutoRotate, turnedHumanoid = false, nil, nil
+
+	releaseBody = function()
+		if not bodyTurned then
+			return
+		end
+		bodyTurned = false
+		if turnedHumanoid and turnedHumanoid.Parent and savedAutoRotate ~= nil then
+			turnedHumanoid.AutoRotate = savedAutoRotate
+		end
+		turnedHumanoid, savedAutoRotate = nil, nil
+	end
+
+	local function turnBody(look)
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not (root and hum) or hum.Sit then
+			releaseBody()
+			return
+		end
+		local flat = Vector3.new(look.X, 0, look.Z)
+		if flat.Magnitude < 1e-3 then
+			return
+		end
+		if not bodyTurned or turnedHumanoid ~= hum then
+			releaseBody()
+			bodyTurned = true
+			turnedHumanoid = hum
+			savedAutoRotate = hum.AutoRotate
+		end
+		hum.AutoRotate = false
+		local pos = root.Position
+		root.CFrame = CFrame.lookAt(pos, pos + flat.Unit)
+	end
+
+	RunService:BindToRenderStep("AimTurnBody", Enum.RenderPriority.Last.Value + 2, function()
+		local cam = workspace.CurrentCamera
+		if not (cam and lockedPart and AIM.TurnBody) then
+			releaseBody()
+			return
+		end
+		turnBody(aimLook or cam.CFrame.LookVector)
+	end)
+	player.CharacterAdded:Connect(function()
+		bodyTurned, savedAutoRotate, turnedHumanoid = false, nil, nil
+	end)
+	gui.Destroying:Connect(releaseBody)
 
 	local function customFire(down)
 	end
