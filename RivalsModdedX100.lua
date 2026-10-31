@@ -2315,7 +2315,7 @@ local function setupAim()
 		Prediction = 0,
 		StickyTarget = true,
 		LockGrace = 0,
-		HoldToAim = false,
+		HoldToAim = true,
 		HoldThroughWalls = false,
 		AutoShoot = "All",
 		AutoShootAngle = 10,
@@ -2358,7 +2358,12 @@ local function setupAim()
 	local enabled = false
 	local holding = false
 	local hasPass = (AIM.GamePassId == 0)
-	local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+	local isMobile = UserInputService.TouchEnabled
+	pcall(function()
+		UserInputService.TouchStarted:Connect(function()
+			isMobile = true
+		end)
+	end)
 
 	local COLORS = {
 		bg = Color3.fromRGB(14, 8, 20),
@@ -3688,7 +3693,10 @@ local function setupAim()
 
 	local function wantsAim()
 		if not (hasPass and enabled) or menuVisible then return false end
-		if AIM.HoldToAim and not isMobile and not holding then return false end
+		if isMobile then
+			return aliveHumanoid(player.Character) ~= nil
+		end
+		if AIM.HoldToAim and not holding then return false end
 		return aliveHumanoid(player.Character) ~= nil
 	end
 
